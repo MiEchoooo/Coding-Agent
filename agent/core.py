@@ -101,13 +101,15 @@ class CodingAgent:
             )
 
     def _initial_messages(self, task: str) -> list[dict[str, Any]]:
-        """Load prior context and append the new user task."""
+        """Start a fresh conversation for the new task."""
 
-        messages = self.history.load()
-        if not messages:
-            system_message = {"role": "system", "content": SYSTEM_PROMPT}
-            messages.append(system_message)
-            self.history.append(system_message)
+        # 清空旧历史，确保每次 run() 都是独立会话
+        self.history.clear()
+
+        messages: list[dict[str, Any]] = []
+        system_message = {"role": "system", "content": SYSTEM_PROMPT}
+        messages.append(system_message)
+        self.history.append(system_message)
 
         user_message = {"role": "user", "content": task}
         messages.append(user_message)
