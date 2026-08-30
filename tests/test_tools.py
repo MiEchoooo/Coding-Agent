@@ -1,9 +1,6 @@
 """Tests for agent tools and safety mechanisms."""
 
-import os
 from pathlib import Path
-
-import pytest
 
 from agent.tools import (
     execute_tool,
@@ -14,16 +11,6 @@ from agent.tools import (
     search_files,
     write_file,
 )
-
-
-@pytest.fixture
-def temp_project(tmp_path: Path):
-    """Create a temporary project directory for isolated testing."""
-    import agent.tools as tools_module
-    original_root = tools_module.PROJECT_ROOT
-    tools_module.PROJECT_ROOT = tmp_path
-    yield tmp_path
-    tools_module.PROJECT_ROOT = original_root
 
 
 class TestPathSafety:
@@ -42,6 +29,8 @@ class TestPathSafety:
     def test_write_file_git_blocked(self, temp_project: Path) -> None:
         result = write_file(".git/config", "malicious")
         assert result["ok"] is False
+        assert result["content"] == ""
+        assert result["error"]
 
     def test_resolve_traversal_attack(self, temp_project: Path) -> None:
         result = read_file("foo/../../../etc/passwd")
@@ -52,10 +41,12 @@ class TestReadWrite:
     """Basic file operations."""
 
     def test_write_and_read_roundtrip(self, temp_project: Path) -> None:
-        write_file("test.txt", "hello world")
+        write_result = write_file("test.txt", "hello world")
         result = read_file("test.txt")
+        assert write_result["ok"] is True
         assert result["ok"] is True
         assert result["content"] == "hello world"
+        assert result["error"] is None
 
     def test_read_file_with_offset_limit(self, temp_project: Path) -> None:
         write_file("test.txt", "abcdefghij")
@@ -132,3 +123,16 @@ class TestExecuteToolDispatch:
     def test_missing_required_arg(self) -> None:
         result = execute_tool("read_file", "{}")
         assert result["ok"] is False
+
+    def test_registered_tool_schemas_include_all_tools(self) -> None:
+        schemas = get_tool_schemas()
+        names = {schema["function"]["name"] for schema in schemas}
+
+        assert names == {
+            "read_file",
+            "write_file",
+            "run_shell",
+            "list_directory",
+            "search_files",
+        }
+        assert all(schema["type"] == "function" for schema in schemas)

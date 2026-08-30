@@ -1,12 +1,22 @@
 """Tests for config.settings module."""
 
 import os
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
 from config.settings import Settings, get_settings
+
+
+@pytest.fixture(autouse=True)
+def clear_settings_environment(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Keep Settings tests independent from the developer shell environment."""
+
+    for name in ("API_KEY", "BASE_URL", "MODEL_NAME", "HISTORY_PATH", "MAX_ITERATIONS"):
+        monkeypatch.delenv(name, raising=False)
+    yield
 
 
 class TestSettingsFromEnvironment:
@@ -30,8 +40,6 @@ class TestSettingsFromEnvironment:
 
     def test_api_key_is_required(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Missing API_KEY must raise a validation error."""
-        monkeypatch.delenv("API_KEY", raising=False)
-
         with pytest.raises(ValidationError) as exc_info:
             Settings()
 
@@ -116,7 +124,6 @@ class TestSettingsCaching:
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("API_KEY", "sk-before")
 
-        get_settings.cache_clear()
         s1 = get_settings()
 
         # Simulate a config change (normally not recommended mid-process,

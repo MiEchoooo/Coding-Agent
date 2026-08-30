@@ -6,15 +6,7 @@ import pytest
 
 from agent.llm_client import LLMClient
 from config.settings import Settings
-
-
-@pytest.fixture
-def fake_settings() -> Settings:
-    return Settings(
-        api_key="sk-test",
-        base_url="http://localhost:9999",
-        model_name="fake-model",
-    )
+from tests.conftest import make_mock_response
 
 
 class TestLLMClientInit:
@@ -37,23 +29,11 @@ class TestLLMClientInit:
 class TestChatSuccess:
     """Normal completion paths."""
 
-    def _make_mock_response(self, message: MagicMock | None = None) -> MagicMock:
-        """Helper to build a mock chat.completions.create return value."""
-        if message is None:
-            message = MagicMock()
-        choice = MagicMock()
-        choice.message = message
-        response = MagicMock()
-        response.choices = [choice]
-        return response
-
     def test_chat_without_tools(self, fake_settings: Settings) -> None:
         client = LLMClient(fake_settings)
         expected_msg = MagicMock()
         client.client = MagicMock()
-        client.client.chat.completions.create.return_value = self._make_mock_response(
-            expected_msg
-        )
+        client.client.chat.completions.create.return_value = make_mock_response(expected_msg)
 
         result = client.chat([{"role": "user", "content": "hello"}])
 
@@ -68,9 +48,7 @@ class TestChatSuccess:
         client = LLMClient(fake_settings)
         expected_msg = MagicMock()
         client.client = MagicMock()
-        client.client.chat.completions.create.return_value = self._make_mock_response(
-            expected_msg
-        )
+        client.client.chat.completions.create.return_value = make_mock_response(expected_msg)
 
         tools = [{"type": "function", "function": {"name": "read_file"}}]
         result = client.chat([{"role": "user", "content": "hi"}], tools=tools)
@@ -84,7 +62,7 @@ class TestChatSuccess:
 class TestChatRetryOnServerError:
     """5xx and transient errors trigger retries."""
 
-    def _make_api_status_error(self, status_code: int):
+    def _make_api_status_error(self, status_code: int) -> Exception:
         """Build a real APIStatusError instance that can be raised by mock."""
         from openai import APIStatusError
 
@@ -100,7 +78,11 @@ class TestChatRetryOnServerError:
 
         return FakeAPIStatusError(status_code)
 
-    def test_retry_once_on_503_then_success(self, fake_settings: Settings, capsys) -> None:
+    def test_retry_once_on_503_then_success(
+        self,
+        fake_settings: Settings,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
         """A single 503 followed by success should retry and return the good result."""
         client = LLMClient(fake_settings)
         exc_503 = self._make_api_status_error(503)
@@ -108,7 +90,7 @@ class TestChatRetryOnServerError:
         client.client = MagicMock()
         client.client.chat.completions.create.side_effect = [
             exc_503,
-            TestChatSuccess()._make_mock_response(expected_msg),
+            make_mock_response(expected_msg),
         ]
 
         with patch("agent.llm_client.time.sleep") as mock_sleep:
@@ -151,7 +133,7 @@ class TestChatRetryOnServerError:
         client.client = MagicMock()
         client.client.chat.completions.create.side_effect = [
             exc,
-            TestChatSuccess()._make_mock_response(expected_msg),
+            make_mock_response(expected_msg),
         ]
 
         with patch("agent.llm_client.time.sleep"):
@@ -177,7 +159,7 @@ class TestChatRetryOnServerError:
         client.client.chat.completions.create.side_effect = [
             exc,
             exc,
-            TestChatSuccess()._make_mock_response(expected_msg),
+            make_mock_response(expected_msg),
         ]
 
         with patch("agent.llm_client.time.sleep"):
@@ -190,7 +172,7 @@ class TestChatRetryOnServerError:
 class TestChatNoRetry:
     """Client errors (4xx) must not be retried."""
 
-    def _make_api_status_error(self, status_code: int):
+    def _make_api_status_error(self, status_code: int) -> Exception:
         from openai import APIStatusError
 
         class FakeAPIStatusError(APIStatusError):
@@ -250,7 +232,7 @@ class TestExponentialBackoff:
             exc,
             exc,
             exc,
-            TestChatSuccess()._make_mock_response(MagicMock()),
+            make_mock_response(MagicMock()),
         ]
 
         with patch("agent.llm_client.time.sleep") as mock_sleep:

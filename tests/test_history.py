@@ -3,8 +3,6 @@
 import json
 from pathlib import Path
 
-import pytest
-
 from agent.history import ConversationHistory
 
 
